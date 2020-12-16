@@ -88,11 +88,11 @@ impl HBClient {
     pub async fn download(&self, download: &Download) -> Result<(), ApiError> {
         for file in &download.download_struct {
             if file.url.is_none() {
-                break;
+                continue;
             }
 
             if !self.platforms.contains(&download.platform) {
-                break;
+                continue;
             }
 
             let download_url = Url::parse(&file.url.as_ref().unwrap().web)?;
@@ -113,7 +113,7 @@ impl HBClient {
 
                     if check_data_validity(file, &content) {
                         println!("valid {} already exists locally, ignoring", fname);
-                        break;
+                        continue;
                     }
                 }
 
@@ -132,12 +132,9 @@ impl HBClient {
             let content = response.bytes().await?;
             let mut content = content.as_ref();
 
-            if !check_data_validity(file, content) {
-                continue;
+            if check_data_validity(file, content) {
+                copy(&mut content, &mut dest).await?;
             }
-
-            copy(&mut content, &mut dest).await?;
-            break;
         }
 
         Ok(())
