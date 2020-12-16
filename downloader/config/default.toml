@@ -1,0 +1,17 @@
+platforms = [
+    "audio",
+    "ebook",
+    #"windows",
+    #"mac",
+    #"linux",
+    #"android",
+    #"asmjs",
+]
+
+[headers]
+Accept = "application/json"
+Accept-Charset = "utf-8"
+Keep-Alive = "True"
+X-Requested-By = "hb_android_app"
+User-Agent = "Apache-HttpClient/UNAVAILABLE (java 1.4)"
+Cookie = ""
