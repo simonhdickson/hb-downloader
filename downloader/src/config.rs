@@ -11,15 +11,14 @@ pub struct Settings {
 
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
-        let mut s = Config::new();
+        let config = Config::builder()
+            .add_source(File::from_str(
+                include_str!("../config/default.toml"),
+                FileFormat::Toml,
+            ))
+            .add_source(File::with_name("config").required(false))
+            .build()?;
 
-        s.merge(File::from_str(
-            include_str!("../config/default.toml"),
-            FileFormat::Toml,
-        ))?;
-
-        s.merge(File::with_name("config").required(false))?;
-
-        s.try_into()
+        config.try_deserialize()
     }
 }

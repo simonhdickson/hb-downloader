@@ -1,23 +1,20 @@
 use std::{env, error::Error};
 
-use clap::Clap;
+use clap::Parser;
 use hb_api::HBClient;
 
 use crate::config::Settings;
 
 mod config;
 
-#[derive(Clap)]
-#[clap(
-    version = "0.1.0",
-    author = "Simon Dickson <simonhdickson@users.noreply.github.com>"
-)]
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
 struct Opts {
     #[clap(subcommand)]
     subcmd: SubCommand,
 }
 
-#[derive(Clap)]
+#[derive(Parser, Debug)]
 enum SubCommand {
     ListOrders,
     DownloadAll,
@@ -36,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match opts.subcmd {
         SubCommand::ListOrders => {
-            let order_items = client.list_orders().await;
+            let order_items = client.list_orders().await?;
 
             println!("{:?}", order_items);
         }
