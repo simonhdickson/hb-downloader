@@ -1,14 +1,19 @@
 use std::{
+    cmp::min,
     collections::{HashMap, HashSet},
     convert::TryInto,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
-use async_std::{fs::File, io::copy, prelude::*};
+use futures_util::StreamExt;
 use md5::Md5;
 use reqwest::header::{HeaderMap, HeaderValue};
 use sha1::{self, Digest, Sha1};
 use thiserror::Error;
+use tokio::{
+    fs::File,
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
+};
 use url::Url;
 
 mod types;
@@ -97,7 +102,7 @@ impl HBClient {
 
             let download_url = Url::parse(&file.url.as_ref().unwrap().web)?;
 
-            let mut dest = {
+            let (mut dest, file_name) = {
                 let fname = download_url
                     .path_segments()
                     .and_then(|segments| segments.last())
@@ -111,7 +116,7 @@ impl HBClient {
                     let mut content = Vec::new();
                     input.read_to_end(&mut content).await?;
 
-                    if check_data_validity(file, &content) {
+                    if check_data_validity(file, file_name.as_path()).await? {
                         println!("valid {} already exists locally, ignoring", fname);
                         continue;
                     }
@@ -119,7 +124,7 @@ impl HBClient {
 
                 println!("downloading file {}", fname);
 
-                File::create(file_name).await?
+                (File::create(file_name.clone()).await?, file_name)
             };
 
             let response = self
@@ -129,35 +134,84 @@ impl HBClient {
                 .send()
                 .await?;
 
-            let content = response.bytes().await?;
-            let mut content = content.as_ref();
+            let total_size = response.content_length().unwrap_or(0);
+            let mut downloaded: u64 = 0;
+            let mut stream = response.bytes_stream();
 
-            if check_data_validity(file, content) {
-                copy(&mut content, &mut dest).await?;
+            while let Some(item) = stream.next().await {
+                let chunk = item?;
+                dest.write_all(&chunk).await?;
+                let new = min(downloaded + (chunk.len() as u64), total_size);
+                downloaded = new;
             }
+
+            //copy(&mut content, &mut dest).await?;
+
+            drop(dest);
+
+            if check_data_validity(file, file_name.as_path()).await? {}
         }
 
         Ok(())
     }
 }
 
-fn check_data_validity(download_struct: &DownloadStruct, content: &[u8]) -> bool {
+pub async fn check_data_validity(
+    download_struct: &DownloadStruct,
+    path: &Path,
+) -> Result<bool, ApiError> {
+    let file = File::open(path).await?;
+    let reader = BufReader::new(file);
+
     if let Some(expected_hash) = &download_struct.sha1 {
-        let file_hash = format!("{:x}", Sha1::digest(&content));
+        let file_hash = sha1_digest(reader).await?;
 
         if expected_hash != &file_hash {
             println!("expected sha1 {} got {}", expected_hash, file_hash);
-            return false;
+            return Ok(false);
         }
     } else if let Some(expected_hash) = &download_struct.md5 {
-        let file_hash = format!("{:x}", Md5::digest(&content));
+        let file_hash = md5_digest(reader).await?;
 
         if expected_hash != &file_hash {
             println!("expected md5 {} got {}", expected_hash, file_hash);
-            return false;
+            return Ok(false);
         }
     }
 
-    // yolo
-    true
+    Ok(true)
+}
+
+pub async fn sha1_digest<R: AsyncRead + Unpin>(mut reader: R) -> Result<String, ApiError> {
+    let mut digest = Sha1::new();
+    let mut buffer = [0; 1024];
+
+    loop {
+        let count = reader.read(&mut buffer).await?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+
+    let hash = digest.finalize();
+
+    Ok(format!("{:x}", hash))
+}
+
+pub async fn md5_digest<R: AsyncRead + Unpin>(mut reader: R) -> Result<String, ApiError> {
+    let mut digest = Md5::new();
+    let mut buffer = [0; 1024];
+
+    loop {
+        let count = reader.read(&mut buffer).await?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+
+    let hash = digest.finalize();
+
+    Ok(format!("{:x}", hash))
 }
