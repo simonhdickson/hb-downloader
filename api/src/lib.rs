@@ -112,10 +112,6 @@ impl HBClient {
                 let file_name = self.download_folder.join(fname);
 
                 if file_name.exists() {
-                    let mut input = File::open(&file_name).await?;
-                    let mut content = Vec::new();
-                    input.read_to_end(&mut content).await?;
-
                     if check_data_validity(file, file_name.as_path()).await? {
                         println!("valid {} already exists locally, ignoring", fname);
                         continue;
